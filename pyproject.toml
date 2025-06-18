@@ -1,0 +1,25 @@
+[project]
+name = "forecastiso"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "joypauls",email = "joypaulsen3@gmail.com"}
+]
+readme = "README.md"
+packages = [{ include = "forecastiso" }]
+requires-python = ">=3.13"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pandas = "^2.3.0"
+numpy = "^2.3.0"
+matplotlib = "^3.10.3"
+openpyxl = "^3.1.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
