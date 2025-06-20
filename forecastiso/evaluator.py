@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 
 from forecastiso.forecaster import Forecaster
 
@@ -10,7 +10,7 @@ class Evaluator:
 
     def evaluate(self, y_true: pd.Series, y_pred: pd.Series, model_name: str):
         mae = mean_absolute_error(y_true, y_pred)
-        rmse = mean_squared_error(y_true, y_pred, squared=False)
+        rmse = root_mean_squared_error(y_true, y_pred)
         self.results.append({"model": model_name, "MAE": mae, "RMSE": rmse})
         return {"MAE": mae, "RMSE": rmse}
 
