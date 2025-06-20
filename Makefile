@@ -1,6 +1,9 @@
-.PHONY: install update clean copy-local
+.PHONY: install test
 
 install:
-	poetry install
+	poetry install --with dev
+
+test:
+	poetry run pytest
 
 
