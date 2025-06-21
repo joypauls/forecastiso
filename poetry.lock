@@ -361,6 +361,20 @@ unicode = ["unicodedata2 (>=15.1.0)"]
 woff = ["brotli (>=1.0.1)", "brotlicffi (>=0.8.0)", "zopfli (>=0.1.4)"]
 
 [[package]]
+name = "holidays"
+version = "0.75"
+description = "Open World Holidays Framework"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "holidays-0.75-py3-none-any.whl", hash = "sha256:f87a75e9274ba60c0ae2b65fb91b8ee1b9547f384875b0fa6ee3e5a45012bdfc"},
+    {file = "holidays-0.75.tar.gz", hash = "sha256:73441b6f7ca2f2b8f67c1554b6850e5dfd84cb62831b6c756de81c43b1efee73"},
+]
+
+[package.dependencies]
+python-dateutil = "*"
+
+[[package]]
 name = "iniconfig"
 version = "2.1.0"
 description = "brain-dead simple config-ini parsing"
@@ -1495,4 +1509,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.13"
-content-hash = "cbfcfba423161027750fc1b5f16cd630bd3dacdcb45c6cf4285350a91f47d43a"
+content-hash = "4c92b667ed7b8a009ece218e3a9fa20fd7b0f0009cbd09c515febbdba6ee6c1d"
