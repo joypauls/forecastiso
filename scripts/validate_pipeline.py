@@ -16,12 +16,15 @@ if __name__ == "__main__":
     loader = ISODataLoader(CAISO_DIR)
     df = loader.load_and_preprocess()
 
+    # select an area to model
+    df = df[df["area"] == "caiso"]
+
     # feature generation
     fm = FeatureManager()
     fm.add_generator(LagFeatureGenerator(lags=[24, 48, 168]))
     fm.add_generator(RollingFeatureGenerator(windows=[24, 168, 720]))
     fm.add_generator(CalendarFeatureGenerator())
-    fm.add_generator(InteractionFeatureGenerator())
+    fm.add_generator(InteractionFeatureGenerator([["hour", "is_weekend"]]))
     features_df = fm.generate_features(df)
 
     print(features_df.columns)
