@@ -1,7 +1,5 @@
 import pandas as pd
-import numpy as np
-from typing import List, Dict, Optional, Union, Callable
-from datetime import datetime
+from typing import List, Dict, Union, Callable
 import holidays
 from abc import ABC, abstractmethod
 
@@ -30,7 +28,6 @@ class LagFeatureGenerator(FeatureGenerator):
         self.lags = lags
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
         for lag in self.lags:
             df[f"{self.column}_lag_{lag}"] = df[self.column].shift(lag)
         return df
@@ -55,7 +52,6 @@ class RollingFeatureGenerator(FeatureGenerator):
         }
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
         for window in self.windows:
             for func_name, func in self.functions.items():
                 df[f"{self.column}_rolling_{func_name}_{window}"] = (
@@ -71,7 +67,6 @@ class CalendarFeatureGenerator(FeatureGenerator):
         self.country = country
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
 
         df["hour"] = df.index.hour
         df["dayofweek"] = df.index.dayofweek
@@ -84,12 +79,12 @@ class CalendarFeatureGenerator(FeatureGenerator):
 
         # holiday stuff
         country_holidays = holidays.country_holidays(self.country)
-        df["is_holiday"] = df.index.date.map(lambda date: date in country_holidays)
-        df["day_before_holiday"] = df.index.date.map(
-            lambda date: (date + pd.Timedelta(days=1)) in country_holidays
+        df["is_holiday"] = df.index.map(lambda date: date.date() in country_holidays)
+        df["day_before_holiday"] = df.index.map(
+            lambda date: (date.date() + pd.Timedelta(days=1)) in country_holidays
         )
-        df["day_after_holiday"] = df.index.date.map(
-            lambda date: (date - pd.Timedelta(days=1)) in country_holidays
+        df["day_after_holiday"] = df.index.map(
+            lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
 
         return df
@@ -98,27 +93,14 @@ class CalendarFeatureGenerator(FeatureGenerator):
 class InteractionFeatureGenerator(FeatureGenerator):
     """Generate interaction features between existing features"""
 
-    def __init__(self, interactions: List[Dict[str, Union[str, List[str]]]] = None):
-        self.interactions = interactions or [
-            {"features": ["hour", "is_weekend"], "operation": "multiply"}
-        ]
+    def __init__(self, interactions: List[List[str]] = [["hour", "is_weekend"]]):
+        self.interactions = interactions
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-
-        for interaction in self.interactions:
-            features = interaction["features"]
-            operation = interaction.get("operation", "multiply")
-
-            if operation == "multiply":
-                if len(features) == 2:
-                    if features == ["hour", "is_weekend"]:
-                        df["hour_weekend"] = df["hour"] * df["is_weekend"]
-                        df["hour_weekday"] = df["hour"] * (1 - df["is_weekend"])
-                    else:
-                        name = f"{features[0]}_{features[1]}"
-                        df[name] = df[features[0]] * df[features[1]]
-
+        for features in self.interactions:
+            if len(features) == 2:
+                name = f"{features[0]}_{features[1]}"
+                df[name] = df[features[0]] * df[features[1]]
         return df
 
 
@@ -141,6 +123,7 @@ class FeatureManager:
                 f"The dataframe must contain the following columns: {required_columns}"
             )
 
+        # copy first so feature generators do not modify the original df
         result = df.copy()
         # check if we have a datetime index, otherwise make one
         if not isinstance(result.index, pd.DatetimeIndex):
