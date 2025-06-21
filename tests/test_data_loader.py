@@ -22,8 +22,9 @@ def test_preprocess():
     processed_df = loader.preprocess(raw_df)
 
     assert "datetime" in processed_df.columns
+    assert "area" in processed_df.columns
     assert "load" in processed_df.columns
-    assert len(processed_df.columns) == 2
+    assert len(processed_df.columns) == 3
     assert pd.api.types.is_datetime64_dtype(processed_df["datetime"])
 
     assert processed_df["datetime"].is_unique
@@ -46,4 +47,6 @@ def test_load_and_preprocess():
     assert not df.empty
     assert "datetime" in df.columns
     assert "load" in df.columns
+    assert "area" in df.columns
+    assert len(df.columns) == 3
     assert df["datetime"].is_monotonic_increasing
