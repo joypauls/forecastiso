@@ -5,6 +5,7 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 from typing import List, Optional
 from abc import ABC, abstractmethod
+from xgboost import XGBRegressor
 
 
 class Forecaster(ABC):
@@ -96,6 +97,9 @@ class LinearRegressionForecaster(Forecaster):
         self.alpha = alpha
         self.standardize = standardize
         self.model = None
+        self.scaler = None
+        self.bool_cols = []
+        self.numeric_cols = []
 
     def fit(self, history: pd.DataFrame):
         """Fit a regression model that predicts 24 hours at once"""
@@ -114,9 +118,6 @@ class LinearRegressionForecaster(Forecaster):
                     f"Feature columns {missing_cols} not found in history."
                 )
 
-        self.history = self.history.reset_index(drop=True)
-        self.history = self.history[self.feature_cols + [self.target_col]]
-
         if self.feature_cols is None:
             self.feature_cols = [
                 col
@@ -124,55 +125,213 @@ class LinearRegressionForecaster(Forecaster):
                 if col != self.target_col and col != "area"
             ]
 
-        bool_cols = [col for col in self.feature_cols if history[col].dtype == "bool"]
-        numeric_cols = [col for col in self.feature_cols if col not in bool_cols]
+        self.bool_cols = [
+            col for col in self.feature_cols if history[col].dtype == "bool"
+        ]
+        self.numeric_cols = [
+            col for col in self.feature_cols if col not in self.bool_cols
+        ]
+
+        print(self.bool_cols)
+        print(self.numeric_cols)
+
+        self.history = self.history.reset_index(drop=True)
+        self.history = self.history[self.feature_cols + [self.target_col]]
+
+        scaled_history = self.history.copy()
 
         if self.standardize:
-            if bool_cols:
-                self.history[bool_cols] = self.history[bool_cols].astype(int)
-            if numeric_cols:
-                scaler = StandardScaler()
-                self.history[numeric_cols] = scaler.fit_transform(
-                    self.history[numeric_cols]
+            if self.bool_cols:
+                scaled_history[self.bool_cols] = scaled_history[self.bool_cols].astype(
+                    int
+                )
+            if self.numeric_cols:
+                self.scaler = StandardScaler()
+                scaled_history[self.numeric_cols] = self.scaler.fit_transform(
+                    scaled_history[self.numeric_cols]
                 )
 
-        X_train = []
-        y_train = []
+        step = 24
+        X_train, y_train = [], []
+        for i in range(0, len(scaled_history) - 24, step):
+            features = scaled_history.iloc[i][self.feature_cols].values
+            next_24h = scaled_history.iloc[i + 1 : i + 25][self.target_col].values
 
-        # for each day in history, create a training sample
-        # that maps features at time t to next 24 hours of load at t+1...t+24
-        # step = 24
-        for i in range(len(history) - 24):
-            features = self.history.iloc[i][self.feature_cols].values
-            next_24h = self.history.iloc[i + 1 : i + 25][self.target_col].values
-
-            if len(next_24h) < 24:
-                continue
-
-            X_train.append(features)
-            y_train.append(next_24h)
+            if len(next_24h) == 24:
+                X_train.append(features)
+                y_train.append(next_24h)
 
         X_train = np.array(X_train)
         y_train = np.array(y_train)
 
-        if self.use_ridge:
-            base_model = Ridge(alpha=self.alpha)
-        else:
-            base_model = LinearRegression()
-
-        # predict all 24 hours at once
-        model = MultiOutputRegressor(base_model)
-        self.model = model
+        base_model = Ridge(alpha=self.alpha) if self.use_ridge else LinearRegression()
+        self.model = MultiOutputRegressor(base_model)
         self.model.fit(X_train, y_train)
 
     def predict(self, horizon: int = 24) -> pd.Series:
         """Predict next 24 hours of load"""
         if self.model is None:
             raise ValueError("Model not fitted. Call fit() first.")
+        if horizon > 24:
+            raise ValueError("Horizon must be 24 or less.")
 
-        latest_data = self.history.iloc[-1][self.feature_cols].values.reshape(1, -1)
+        latest = self.history.iloc[-1 : self.history.shape[0]].copy()
 
-        predictions = self.model.predict(latest_data)[0]
+        if self.standardize:
+            if self.bool_cols:
+                latest[self.bool_cols] = latest[self.bool_cols].astype(int)
+            if self.numeric_cols:
+                latest[self.numeric_cols] = self.scaler.transform(
+                    latest[self.numeric_cols]
+                )
+
+        features = latest[self.feature_cols].values.reshape(1, -1)
+        predictions = self.model.predict(features)[0]
+
+        return pd.Series(predictions[:horizon])
+
+
+class GradientBoostingForecaster(Forecaster):
+    """
+    Forecaster that uses XGBoost gradient boosting to predict all 24 hours at once.
+    Should outperform linear regression by capturing non-linear patterns.
+    """
+
+    def __init__(
+        self,
+        feature_cols: Optional[List[str]] = None,
+        target_col: str = "load",
+        n_estimators: int = 200,
+        learning_rate: float = 0.05,
+        max_depth: int = 5,
+        standardize: bool = True,
+    ):
+        super().__init__(name="XGBoost")
+
+        self.feature_cols = feature_cols
+        self.target_col = target_col
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.max_depth = max_depth
+        self.standardize = standardize
+        self.model = None
+        self.scaler = None
+        self.bool_cols = []
+        self.numeric_cols = []
+
+    def fit(self, history: pd.DataFrame):
+        """Fit an XGBoost model that predicts 24 hours at once"""
+        self.history = history.copy()
+
+        # Validation checks
+        if self.history.empty:
+            raise ValueError("History is empty. Cannot fit model.")
+        if self.target_col not in history.columns:
+            raise ValueError(f"Target column '{self.target_col}' not found in history.")
+
+        # Determine features to use
+        if self.feature_cols is None:
+            self.feature_cols = [
+                col
+                for col in history.columns
+                if col != self.target_col and col != "area"
+            ]
+        else:
+            missing_cols = [
+                col for col in self.feature_cols if col not in history.columns
+            ]
+            if missing_cols:
+                raise ValueError(
+                    f"Feature columns {missing_cols} not found in history."
+                )
+
+        # Identify boolean and numeric columns
+        self.bool_cols = [
+            col for col in self.feature_cols if history[col].dtype == "bool"
+        ]
+        self.numeric_cols = [
+            col for col in self.feature_cols if col not in self.bool_cols
+        ]
+
+        # Prepare dataset
+        self.history = self.history.reset_index(drop=True)
+        self.history = self.history[self.feature_cols + [self.target_col]]
+        scaled_history = self.history.copy()
+
+        # Standardize if needed
+        if self.standardize:
+            # Convert booleans to integers
+            if self.bool_cols:
+                scaled_history[self.bool_cols] = scaled_history[self.bool_cols].astype(
+                    int
+                )
+
+            # Scale numeric features
+            if self.numeric_cols:
+                self.scaler = StandardScaler()
+                scaled_history[self.numeric_cols] = self.scaler.fit_transform(
+                    scaled_history[self.numeric_cols]
+                )
+
+        # Create training data
+        step = 24  # Hours in a day
+        X_train, y_train = [], []
+        for i in range(0, len(scaled_history) - 24, step):
+            features = scaled_history.iloc[i][self.feature_cols].values
+            next_24h = scaled_history.iloc[i + 1 : i + 25][self.target_col].values
+
+            if len(next_24h) == 24:
+                X_train.append(features)
+                y_train.append(next_24h)
+
+        X_train = np.array(X_train)
+        y_train = np.array(y_train)
+
+        # Configure XGBoost for best performance with time series
+        # Remove early_stopping_rounds parameter which requires validation data
+        base_model = XGBRegressor(
+            n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate,
+            max_depth=self.max_depth,
+            objective="reg:squarederror",
+            verbosity=0,
+            booster="gbtree",
+            subsample=0.8,
+            colsample_bytree=0.8,
+            # Regularization to prevent overfitting
+            reg_lambda=1.0,
+            reg_alpha=0.0,
+            # No early stopping since we don't have validation data
+            # For reproducibility
+            random_state=42,
+        )
+
+        # Create a multi-output model to predict all 24 hours at once
+        self.model = MultiOutputRegressor(base_model)
+        self.model.fit(X_train, y_train)
+
+    def predict(self, horizon: int = 24) -> pd.Series:
+        """Predict next 24 hours of load"""
+        if self.model is None:
+            raise ValueError("Model not fitted. Call fit() first.")
+        if horizon > 24:
+            raise ValueError("Horizon must be 24 or less.")
+
+        # Get the most recent data point
+        latest = self.history.iloc[-1 : self.history.shape[0]].copy()
+
+        # Apply same preprocessing as during training
+        if self.standardize:
+            if self.bool_cols:
+                latest[self.bool_cols] = latest[self.bool_cols].astype(int)
+            if self.numeric_cols:
+                latest[self.numeric_cols] = self.scaler.transform(
+                    latest[self.numeric_cols]
+                )
+
+        # Make the prediction
+        features = latest[self.feature_cols].values.reshape(1, -1)
+        predictions = self.model.predict(features)[0]
 
         return pd.Series(predictions[:horizon])
 
