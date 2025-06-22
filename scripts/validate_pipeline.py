@@ -1,5 +1,3 @@
-# import os
-
 from forecastiso.data_loader import ISODataLoader
 from forecastiso.features import (
     FeatureManager,

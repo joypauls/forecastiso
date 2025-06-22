@@ -3,7 +3,6 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
 from typing import List, Optional
 from abc import ABC, abstractmethod
 
@@ -36,6 +35,7 @@ class NaiveYesterdayForecaster(Forecaster):
         self.history = history
 
     def predict(self, horizon: int = 24) -> pd.Series:
+        # TODO: don't hardcode column name
         return self.history.iloc[-24:]["load"].reset_index(drop=True)
 
 
@@ -46,6 +46,7 @@ class NaiveLastWeekForecaster(Forecaster):
         self.history = history
 
     def predict(self, horizon: int = 24) -> pd.Series:
+        # TODO: don't hardcode column name
         return self.history.iloc[-24 * 7 : -24 * 6]["load"].reset_index(drop=True)
 
 
@@ -64,6 +65,7 @@ class RollingMeanForecaster(Forecaster):
         forecasts = []
 
         for h in range(24):
+            # TODO: don't hardcode column name
             hourly_vals = df[df.index.hour == h]["load"][-self.window_days * 24 :]
             forecasts.append(hourly_vals.mean())
 
@@ -71,22 +73,25 @@ class RollingMeanForecaster(Forecaster):
 
 
 class LinearRegressionForecaster(Forecaster):
-    """Forecaster that uses a single linear regression model to predict all 24 hours at once"""
+    """
+    Forecaster that uses a single linear regression model to predict all 24 hours at once.
+    Currently only supports numeric and boolean features.
+    """
 
     def __init__(
         self,
         feature_cols: Optional[List[str]] = None,
+        target_col: str = "load",
         use_ridge: bool = False,
         alpha: float = 1.0,
         standardize: bool = True,
     ):
         name = "Ridge" if use_ridge else "Linear"
         name += "Regression"
-        if standardize:
-            name += "_std"
         super().__init__(name=name)
 
         self.feature_cols = feature_cols
+        self.target_col = target_col
         self.use_ridge = use_ridge
         self.alpha = alpha
         self.standardize = standardize
@@ -96,19 +101,50 @@ class LinearRegressionForecaster(Forecaster):
         """Fit a regression model that predicts 24 hours at once"""
         self.history = history.copy()
 
+        if self.history.empty:
+            raise ValueError("History is empty. Cannot fit model.")
+        if self.target_col not in history.columns:
+            raise ValueError(f"Target column '{self.target_col}' not found in history.")
+        if self.feature_cols is not None:
+            missing_cols = [
+                col for col in self.feature_cols if col not in history.columns
+            ]
+            if missing_cols:
+                raise ValueError(
+                    f"Feature columns {missing_cols} not found in history."
+                )
+
+        self.history = self.history.reset_index(drop=True)
+        self.history = self.history[self.feature_cols + [self.target_col]]
+
         if self.feature_cols is None:
             self.feature_cols = [
-                col for col in history.columns if col != "load" and col != "area"
+                col
+                for col in history.columns
+                if col != self.target_col and col != "area"
             ]
+
+        bool_cols = [col for col in self.feature_cols if history[col].dtype == "bool"]
+        numeric_cols = [col for col in self.feature_cols if col not in bool_cols]
+
+        if self.standardize:
+            if bool_cols:
+                self.history[bool_cols] = self.history[bool_cols].astype(int)
+            if numeric_cols:
+                scaler = StandardScaler()
+                self.history[numeric_cols] = scaler.fit_transform(
+                    self.history[numeric_cols]
+                )
 
         X_train = []
         y_train = []
 
         # for each day in history, create a training sample
         # that maps features at time t to next 24 hours of load at t+1...t+24
+        # step = 24
         for i in range(len(history) - 24):
-            features = history.iloc[i][self.feature_cols].values
-            next_24h = history.iloc[i + 1 : i + 25]["load"].values
+            features = self.history.iloc[i][self.feature_cols].values
+            next_24h = self.history.iloc[i + 1 : i + 25][self.target_col].values
 
             if len(next_24h) < 24:
                 continue
@@ -126,12 +162,7 @@ class LinearRegressionForecaster(Forecaster):
 
         # predict all 24 hours at once
         model = MultiOutputRegressor(base_model)
-
-        if self.standardize:
-            self.model = Pipeline([("scaler", StandardScaler()), ("regressor", model)])
-        else:
-            self.model = model
-
+        self.model = model
         self.model.fit(X_train, y_train)
 
     def predict(self, horizon: int = 24) -> pd.Series:

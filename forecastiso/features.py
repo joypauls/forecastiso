@@ -117,7 +117,7 @@ class FeatureManager:
     def generate_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate all features using registered generators"""
 
-        required_columns = {"datetime", "load", "area"}
+        required_columns = {"datetime", "load"}
         if not required_columns.issubset(df.columns):
             raise ValueError(
                 f"The dataframe must contain the following columns: {required_columns}"
