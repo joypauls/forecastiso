@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from typing import List, Dict, Union, Callable
 import holidays
@@ -86,6 +87,13 @@ class CalendarFeatureGenerator(FeatureGenerator):
         df["day_after_holiday"] = df.index.map(
             lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
+
+        # cyclical encodings
+        df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+        df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+
+        df["dayofweek_sin"] = np.sin(2 * np.pi * df["dayofweek"] / 7)
+        df["dayofweek_cos"] = np.cos(2 * np.pi * df["dayofweek"] / 7)
 
         return df
 

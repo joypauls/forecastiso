@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression, Ridge
+
+# from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 from typing import List, Optional
@@ -73,107 +74,10 @@ class RollingMeanForecaster(Forecaster):
         return pd.Series(forecasts[:horizon])
 
 
-class LinearRegressionForecaster:
-    def __init__(
-        self,
-        feature_cols: Optional[List[str]] = None,
-        target_col: str = "load",
-        use_ridge: bool = False,
-        alpha: float = 1.0,
-        standardize: bool = True,
-    ):
-        self.feature_cols = feature_cols
-        self.target_col = target_col
-        self.use_ridge = use_ridge
-        self.alpha = alpha
-        self.standardize = standardize
-
-        self.model = None
-        self.scaler_X = None
-        self.scaler_y = None
-        self.bool_cols = []
-        self.numeric_cols = []
-
-    def fit(self, history: pd.DataFrame):
-        self.history = history.copy()
-
-        if self.feature_cols is None:
-            self.feature_cols = [
-                col
-                for col in history.columns
-                if col != self.target_col and col != "area"
-            ]
-
-        self.bool_cols = [
-            col for col in self.feature_cols if history[col].dtype == "bool"
-        ]
-        self.numeric_cols = [
-            col for col in self.feature_cols if col not in self.bool_cols
-        ]
-
-        self.history = self.history.reset_index(drop=True)
-        X_full = self.history[self.feature_cols].copy()
-        y_full = self.history[self.target_col].copy()
-
-        # Standardize inputs
-        if self.standardize:
-            if self.bool_cols:
-                X_full[self.bool_cols] = X_full[self.bool_cols].astype(int)
-            self.scaler_X = StandardScaler()
-            X_full[self.numeric_cols] = self.scaler_X.fit_transform(
-                X_full[self.numeric_cols]
-            )
-
-        # Build training samples
-        step = 24
-        X_train, y_train = [], []
-        for i in range(0, len(X_full) - 24, step):
-            x = X_full.iloc[i].values
-            y_seq = y_full.iloc[i + 1 : i + 25].values
-            if len(y_seq) == 24:
-                X_train.append(x)
-                y_train.append(y_seq)
-
-        X_train = np.array(X_train)
-        y_train = np.array(y_train)
-
-        # Scale target
-        if self.standardize:
-            self.scaler_y = StandardScaler()
-            y_train = self.scaler_y.fit_transform(y_train)
-
-        base_model = Ridge(alpha=self.alpha) if self.use_ridge else LinearRegression()
-        self.model = MultiOutputRegressor(base_model)
-        self.model.fit(X_train, y_train)
-
-    def predict(self, horizon: int = 24) -> pd.Series:
-        if self.model is None:
-            raise ValueError("Model not fitted. Call fit() first.")
-        if horizon > 24:
-            raise ValueError("Horizon must be 24 or less.")
-
-        latest = self.history.iloc[-1:].copy()
-        if self.standardize:
-            if self.bool_cols:
-                latest[self.bool_cols] = latest[self.bool_cols].astype(int)
-            latest[self.numeric_cols] = self.scaler_X.transform(
-                latest[self.numeric_cols]
-            )
-
-        features = latest[self.feature_cols].values.reshape(1, -1)
-        y_pred = self.model.predict(features)[0]
-
-        # Unscale prediction
-        if self.standardize:
-            y_pred = self.scaler_y.inverse_transform(y_pred.reshape(-1, 1)).ravel()
-
-        return pd.Series(y_pred[:horizon])
-
-
-class GradientBoostingForecaster(Forecaster):
+class SimpleXGBForecaster(Forecaster):
     """
-    Forecaster that uses XGBoost gradient boosting to predict all 24 hours at once.
-    Should outperform linear regression by capturing non-linear patterns.
+    Forecasts the next 24 hours of load using features at hour 23 of each day.
+    Trained with one sample per day: X at hour 23 → y for hours 0–23 of the next day.
     """
 
     def __init__(
@@ -199,16 +103,14 @@ class GradientBoostingForecaster(Forecaster):
         self.numeric_cols = []
 
     def fit(self, history: pd.DataFrame):
-        """Fit an XGBoost model that predicts 24 hours at once"""
-        self.history = history.copy()
+        """Train model on features at hour 23 to predict next day's 24-hour load."""
+        self.history = history.copy().reset_index(drop=True)
 
-        # Validation checks
         if self.history.empty:
             raise ValueError("History is empty. Cannot fit model.")
         if self.target_col not in history.columns:
             raise ValueError(f"Target column '{self.target_col}' not found in history.")
 
-        # Determine features to use
         if self.feature_cols is None:
             self.feature_cols = [
                 col
@@ -224,7 +126,6 @@ class GradientBoostingForecaster(Forecaster):
                     f"Feature columns {missing_cols} not found in history."
                 )
 
-        # Identify boolean and numeric columns
         self.bool_cols = [
             col for col in self.feature_cols if history[col].dtype == "bool"
         ]
@@ -232,30 +133,24 @@ class GradientBoostingForecaster(Forecaster):
             col for col in self.feature_cols if col not in self.bool_cols
         ]
 
-        # Prepare dataset
-        self.history = self.history.reset_index(drop=True)
-        self.history = self.history[self.feature_cols + [self.target_col]]
-        scaled_history = self.history.copy()
+        scaled_history = self.history[self.feature_cols + [self.target_col]].copy()
 
-        # Standardize if needed
         if self.standardize:
-            # Convert booleans to integers
             if self.bool_cols:
                 scaled_history[self.bool_cols] = scaled_history[self.bool_cols].astype(
                     int
                 )
-
-            # Scale numeric features
             if self.numeric_cols:
                 self.scaler = StandardScaler()
                 scaled_history[self.numeric_cols] = self.scaler.fit_transform(
                     scaled_history[self.numeric_cols]
                 )
 
-        # Create training data
-        step = 24  # Hours in a day
+        # Train using hour 23 of each day
         X_train, y_train = [], []
-        for i in range(0, len(scaled_history) - 24, step):
+        for i in range(
+            23, len(scaled_history) - 24, 24
+        ):  # every day, starting from hour 23
             features = scaled_history.iloc[i][self.feature_cols].values
             next_24h = scaled_history.iloc[i + 1 : i + 25][self.target_col].values
 
@@ -263,73 +158,65 @@ class GradientBoostingForecaster(Forecaster):
                 X_train.append(features)
                 y_train.append(next_24h)
 
-        X_train = np.array(X_train)
-        y_train = np.array(y_train)
-
-        # Configure XGBoost for best performance with time series
-        # Remove early_stopping_rounds parameter which requires validation data
-        base_model = XGBRegressor(
-            n_estimators=self.n_estimators,
-            learning_rate=self.learning_rate,
-            max_depth=self.max_depth,
-            objective="reg:squarederror",
-            verbosity=0,
-            booster="gbtree",
-            subsample=0.8,
-            colsample_bytree=0.8,
-            # Regularization to prevent overfitting
-            reg_lambda=1.0,
-            reg_alpha=0.0,
-            # No early stopping since we don't have validation data
-            # For reproducibility
-            random_state=42,
+        self.model = MultiOutputRegressor(
+            XGBRegressor(
+                n_estimators=self.n_estimators,
+                learning_rate=self.learning_rate,
+                max_depth=self.max_depth,
+                objective="reg:squarederror",
+                verbosity=0,
+                booster="gbtree",
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_lambda=1.0,
+                reg_alpha=0.0,
+                random_state=42,
+            )
         )
-
-        # Create a multi-output model to predict all 24 hours at once
-        self.model = MultiOutputRegressor(base_model)
-        self.model.fit(X_train, y_train)
+        self.model.fit(np.array(X_train), np.array(y_train))
 
     def predict(self, horizon: int = 24) -> pd.Series:
-        """Predict next 24 hours of load"""
+        """Predict next day's 24-hour load using the latest hour-23 features."""
         if self.model is None:
             raise ValueError("Model not fitted. Call fit() first.")
         if horizon > 24:
             raise ValueError("Horizon must be 24 or less.")
 
-        # Get the most recent data point
-        latest = self.history.iloc[-1 : self.history.shape[0]].copy()
+        latest = self.history.iloc[-1]  # Assumes this is hour 23 of the current day
 
-        # Apply same preprocessing as during training
+        latest_df = pd.DataFrame([latest])[self.feature_cols]
+
         if self.standardize:
             if self.bool_cols:
-                latest[self.bool_cols] = latest[self.bool_cols].astype(int)
+                latest_df[self.bool_cols] = latest_df[self.bool_cols].astype(int)
             if self.numeric_cols:
-                latest[self.numeric_cols] = self.scaler.transform(
-                    latest[self.numeric_cols]
+                latest_df[self.numeric_cols] = self.scaler.transform(
+                    latest_df[self.numeric_cols]
                 )
 
-        # Make the prediction
-        features = latest[self.feature_cols].values.reshape(1, -1)
+        features = latest_df.values.reshape(1, -1)
         predictions = self.model.predict(features)[0]
 
         return pd.Series(predictions[:horizon])
 
 
-class WindowedGradientBoostingForecaster(Forecaster):
+class WindowedXGBForecaster(Forecaster):
     """
-    Forecaster that uses the past 24 hours of load, hour of day, and day of week
+    Uses past 24 hours of load + any scalar features at time t
     to predict the next 24 hours using XGBoost.
     """
 
     def __init__(
         self,
         target_col: str = "load",
+        feature_cols: Optional[List[str]] = None,
         n_estimators: int = 200,
         learning_rate: float = 0.05,
         max_depth: int = 5,
     ):
         super().__init__(name="WindowedXGBoost")
         self.target_col = target_col
+        self.feature_cols = feature_cols or []
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.max_depth = max_depth
@@ -339,15 +226,17 @@ class WindowedGradientBoostingForecaster(Forecaster):
         self.history = history.copy().reset_index(drop=True)
 
         X_train, y_train = [], []
+        for i in range(24, len(self.history) - 24, 24):
+            past_24 = self.history[self.target_col].iloc[i - 24 : i].values
+            future_24 = self.history[self.target_col].iloc[i : i + 24].values
 
-        for i in range(24, len(history) - 24, 24):
-            past_24 = history[self.target_col].iloc[i - 24 : i].values
-            future_24 = history[self.target_col].iloc[i : i + 24].values
+            scalars = []
+            for col in self.feature_cols:
+                if col not in self.history.columns:
+                    raise ValueError(f"Feature '{col}' not found in data.")
+                scalars.append(self.history[col].iloc[i])
 
-            hour = history["hour"].iloc[i]
-            dow = history["dayofweek"].iloc[i]
-
-            features = list(past_24) + [hour, dow]
+            features = list(past_24) + scalars
             X_train.append(features)
             y_train.append(future_24)
 
@@ -362,7 +251,7 @@ class WindowedGradientBoostingForecaster(Forecaster):
             verbosity=0,
             subsample=0.8,
             colsample_bytree=0.8,
-            random_state=42,
+            random_state=1729,
         )
 
         self.model = MultiOutputRegressor(base_model)
@@ -377,10 +266,15 @@ class WindowedGradientBoostingForecaster(Forecaster):
             raise ValueError("Not enough history to generate prediction input.")
 
         past_24 = self.history[self.target_col].iloc[-24:].values
-        hour = self.history["hour"].iloc[-1]
-        dow = self.history["dayofweek"].iloc[-1]
 
-        X_input = np.array(list(past_24) + [hour, dow]).reshape(1, -1)
+        scalars = []
+        for col in self.feature_cols:
+            if col not in self.history.columns:
+                raise ValueError(f"Feature '{col}' not found in data.")
+            scalars.append(self.history[col].iloc[-1])
+
+        features = list(past_24) + scalars
+        X_input = np.array(features).reshape(1, -1)
         prediction = self.model.predict(X_input)[0]
 
         return pd.Series(prediction[:horizon])
