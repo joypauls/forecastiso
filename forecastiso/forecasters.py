@@ -4,7 +4,7 @@ import pandas as pd
 # from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
-from typing import List, Optional
+from typing import List, Optional, Dict
 from abc import ABC, abstractmethod
 from xgboost import XGBRegressor
 
@@ -82,7 +82,7 @@ class SimpleXGBForecaster(Forecaster):
 
     def __init__(
         self,
-        feature_cols: Optional[List[str]] = None,
+        feature_cols: Optional[list[str]] = None,
         target_col: str = "load",
         n_estimators: int = 200,
         learning_rate: float = 0.05,
@@ -175,26 +175,50 @@ class SimpleXGBForecaster(Forecaster):
         )
         self.model.fit(np.array(X_train), np.array(y_train))
 
-    def predict(self, horizon: int = 24) -> pd.Series:
-        """Predict next day's 24-hour load using the latest hour-23 features."""
+    def predict(
+        self, horizon: int = 24, external_features: Optional[pd.Series] = None
+    ) -> pd.Series:
+        """
+        Predict next day's 24-hour load using either the latest hour-23 features or external features.
+
+        Args:
+            horizon: Number of hours to predict (must be <= 24)
+            external_features: Optional external feature values to use instead of latest history
+
+        Returns:
+            Pandas Series with predicted values
+        """
         if self.model is None:
             raise ValueError("Model not fitted. Call fit() first.")
         if horizon > 24:
             raise ValueError("Horizon must be 24 or less.")
 
-        latest = self.history.iloc[-1]  # Assumes this is hour 23 of the current day
+        # Use external features if provided, otherwise use latest from history
+        if external_features is not None:
+            # Verify all required features are present
+            missing_cols = [
+                col for col in self.feature_cols if col not in external_features
+            ]
+            if missing_cols:
+                raise ValueError(f"Missing required features: {missing_cols}")
 
-        latest_df = pd.DataFrame([latest])[self.feature_cols]
+            input_features = pd.DataFrame([external_features])[self.feature_cols]
+        else:
+            latest = self.history.iloc[-1]  # Assumes this is hour 23 of the current day
+            input_features = pd.DataFrame([latest])[self.feature_cols]
 
+        # Apply the same preprocessing as during training
         if self.standardize:
             if self.bool_cols:
-                latest_df[self.bool_cols] = latest_df[self.bool_cols].astype(int)
+                input_features[self.bool_cols] = input_features[self.bool_cols].astype(
+                    int
+                )
             if self.numeric_cols:
-                latest_df[self.numeric_cols] = self.scaler.transform(
-                    latest_df[self.numeric_cols]
+                input_features[self.numeric_cols] = self.scaler.transform(
+                    input_features[self.numeric_cols]
                 )
 
-        features = latest_df.values.reshape(1, -1)
+        features = input_features.values.reshape(1, -1)
         predictions = self.model.predict(features)[0]
 
         return pd.Series(predictions[:horizon])
@@ -209,7 +233,7 @@ class WindowedXGBForecaster(Forecaster):
     def __init__(
         self,
         target_col: str = "load",
-        feature_cols: Optional[List[str]] = None,
+        feature_cols: Optional[list[str]] = None,
         n_estimators: int = 200,
         learning_rate: float = 0.05,
         max_depth: int = 5,
@@ -257,22 +281,50 @@ class WindowedXGBForecaster(Forecaster):
         self.model = MultiOutputRegressor(base_model)
         self.model.fit(X_train, y_train)
 
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, external_data: Optional[pd.DataFrame] = None
+    ) -> pd.Series:
+        """
+        Predict next 24 hours using past 24 hours of load and features.
+
+        Args:
+            horizon: Number of hours to predict (must be <= 24)
+            external_data: Optional DataFrame with same schema as history containing at least 24 hourly records.
+                          If provided, uses the last 24 hours from this data instead of history.
+
+        Returns:
+            Pandas Series with predicted values
+        """
         if self.model is None:
             raise ValueError("Model not fitted. Call fit() first.")
         if horizon > 24:
             raise ValueError("Horizon must be 24 or less.")
-        if self.history is None or len(self.history) < 24:
-            raise ValueError("Not enough history to generate prediction input.")
 
-        past_24 = self.history[self.target_col].iloc[-24:].values
+        # Determine which data source to use
+        source_data = external_data if external_data is not None else self.history
 
+        if source_data is None or len(source_data) < 24:
+            raise ValueError(
+                "Not enough data to generate prediction input (need at least 24 hours)."
+            )
+
+        # Verify the schema matches what we need
+        if self.target_col not in source_data.columns:
+            raise ValueError(f"Target column '{self.target_col}' not found in data.")
+
+        for col in self.feature_cols:
+            if col not in source_data.columns:
+                raise ValueError(f"Feature '{col}' not found in data.")
+
+        # Get the last 24 hours of the target variable
+        past_24 = source_data[self.target_col].iloc[-24:].values
+
+        # Get the latest values of the feature columns
         scalars = []
         for col in self.feature_cols:
-            if col not in self.history.columns:
-                raise ValueError(f"Feature '{col}' not found in data.")
-            scalars.append(self.history[col].iloc[-1])
+            scalars.append(source_data[col].iloc[-1])
 
+        # Combine target history and features for prediction
         features = list(past_24) + scalars
         X_input = np.array(features).reshape(1, -1)
         prediction = self.model.predict(X_input)[0]
@@ -284,17 +336,17 @@ class WindowedXGBForecaster(Forecaster):
 #     """Combines multiple forecasters using weighted average"""
 
 #     def __init__(
-#         self, forecasters: List[Forecaster], weights: Optional[List[float]] = None
-#     ):
-#         super().__init__(name="Ensemble")
+#     def predict(self, horizon: int = 24) -> pd.Series:Optional[List[float]] = None
+#         """Predict using weighted average of component forecasters"""
+#         predictions = [](name="Ensemble")
 #         self.forecasters = forecasters
-
-#         if weights is None:
-#             self.weights = [1.0 / len(forecasters)] * len(forecasters)
+#         for forecaster in self.forecasters:
+#             pred = forecaster.predict(horizon)
+#             predictions.append(pred)n(forecasters)] * len(forecasters)
 #         else:
-#             total = sum(weights)
+#         ensemble_pred = sum(p * w for p, w in zip(predictions, self.weights))
 #             self.weights = [w / total for w in weights]
-
+#         return ensemble_pred
 #     def fit(self, history: pd.DataFrame):
 #         """Fit all component forecasters"""
 #         self.history = history

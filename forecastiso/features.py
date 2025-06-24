@@ -70,13 +70,16 @@ class CalendarFeatureGenerator(FeatureGenerator):
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
 
         df["hour"] = df.index.hour
-        df["dayofweek"] = df.index.dayofweek
+        df["dow"] = df.index.dayofweek
         df["month"] = df.index.month
         df["day"] = df.index.day
         df["quarter"] = df.index.quarter
         df["year"] = df.index.year
-        df["dayofyear"] = df.index.dayofyear
+        df["doy"] = df.index.dayofyear
         df["is_weekend"] = df.index.dayofweek >= 5
+
+        # flag for if the next day is the weekend
+        df["day_before_weekend"] = df.index.dayofweek.isin([4, 5])
 
         # holiday stuff
         country_holidays = holidays.country_holidays(self.country)
@@ -88,12 +91,12 @@ class CalendarFeatureGenerator(FeatureGenerator):
             lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
 
-        # cyclical encodings
-        df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-        df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+        # # cyclical encodings
+        # df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+        # df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
 
-        df["dayofweek_sin"] = np.sin(2 * np.pi * df["dayofweek"] / 7)
-        df["dayofweek_cos"] = np.cos(2 * np.pi * df["dayofweek"] / 7)
+        # df["dayofweek_sin"] = np.sin(2 * np.pi * df["dayofweek"] / 7)
+        # df["dayofweek_cos"] = np.cos(2 * np.pi * df["dayofweek"] / 7)
 
         return df
 
