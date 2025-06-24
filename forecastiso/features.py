@@ -1,6 +1,5 @@
-import numpy as np
 import pandas as pd
-from typing import List, Dict, Union, Callable
+from typing import List, Dict, Callable
 import holidays
 from abc import ABC, abstractmethod
 
@@ -61,14 +60,14 @@ class RollingFeatureGenerator(FeatureGenerator):
         return df
 
 
-class CalendarFeatureGenerator(FeatureGenerator):
-    """Generate holiday-related features"""
+class CalendarFeatureGenerator:
+    """Generate calendar and holiday-related features, including forward-shifted target versions."""
 
     def __init__(self, country: str = "US"):
         self.country = country
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-
+        # Base calendar features
         df["hour"] = df.index.hour
         df["dow"] = df.index.dayofweek
         df["month"] = df.index.month
@@ -76,12 +75,10 @@ class CalendarFeatureGenerator(FeatureGenerator):
         df["quarter"] = df.index.quarter
         df["year"] = df.index.year
         df["doy"] = df.index.dayofyear
-        df["is_weekend"] = df.index.dayofweek >= 5
+        df["is_weekend"] = df["dow"] >= 5
+        df["day_before_weekend"] = df["dow"].isin([4, 5])
 
-        # flag for if the next day is the weekend
-        df["day_before_weekend"] = df.index.dayofweek.isin([4, 5])
-
-        # holiday stuff
+        # Holidays
         country_holidays = holidays.country_holidays(self.country)
         df["is_holiday"] = df.index.map(lambda date: date.date() in country_holidays)
         df["day_before_holiday"] = df.index.map(
@@ -91,12 +88,23 @@ class CalendarFeatureGenerator(FeatureGenerator):
             lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
 
-        # # cyclical encodings
-        # df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-        # df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-
-        # df["dayofweek_sin"] = np.sin(2 * np.pi * df["dayofweek"] / 7)
-        # df["dayofweek_cos"] = np.cos(2 * np.pi * df["dayofweek"] / 7)
+        # Target (forecast day) calendar features — shift by -24 hours
+        shift_hours = -24  # assuming you're forecasting one full day ahead
+        calendar_cols = [
+            "dow",
+            "month",
+            "day",
+            "quarter",
+            "year",
+            "doy",
+            "is_weekend",
+            "day_before_weekend",
+            "is_holiday",
+            "day_before_holiday",
+            "day_after_holiday",
+        ]
+        for col in calendar_cols:
+            df[f"target_{col}"] = df[col].shift(shift_hours)
 
         return df
 
