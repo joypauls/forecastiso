@@ -60,6 +60,26 @@ class RollingFeatureGenerator(FeatureGenerator):
         return df
 
 
+class WindowFeatureGenerator(FeatureGenerator):
+    """Generate features containing windows of past values"""
+
+    def __init__(self, column: str = "load", window_sizes: List[int] = [24]):
+        self.column = column
+        self.window_sizes = window_sizes
+
+    def generate(self, df: pd.DataFrame) -> pd.DataFrame:
+        result = df.copy()
+
+        # Store the windows as separate columns (useful for debugging/analysis)
+        for size in self.window_sizes:
+            for i in range(size):
+                result[f"{self.column}_window_{size}_{i}"] = df[self.column].shift(
+                    size - i
+                )
+
+        return result
+
+
 class CalendarFeatureGenerator:
     """Generate calendar and holiday-related features, including forward-shifted target versions."""
 
