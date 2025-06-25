@@ -252,13 +252,20 @@ class WindowedXGBForecaster(Forecaster):
         X_train, y_train = [], []
         for i in range(24, len(self.history) - 24, 24):
             past_24 = self.history[self.target_col].iloc[i - 24 : i].values
+
+            # if i == 24 or i == 48:
+            #     print(history.index[i - 24 : i])
+
             future_24 = self.history[self.target_col].iloc[i : i + 24].values
+
+            # if i == 24 or i == 48:
+            #     print(self.history["hour"].iloc[i - 1])
 
             scalars = []
             for col in self.feature_cols:
                 if col not in self.history.columns:
                     raise ValueError(f"Feature '{col}' not found in data.")
-                scalars.append(self.history[col].iloc[i])
+                scalars.append(self.history[col].iloc[i - 1])
 
             features = list(past_24) + scalars
             X_train.append(features)
@@ -286,6 +293,7 @@ class WindowedXGBForecaster(Forecaster):
     ) -> pd.Series:
         """
         Predict next 24 hours using past 24 hours of load and features.
+        Assumes external_data has a full day of hours (0-23)
 
         Args:
             horizon: Number of hours to predict (must be <= 24)
