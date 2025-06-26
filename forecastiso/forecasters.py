@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 
-# from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from typing import Optional
 from abc import ABC, abstractmethod
@@ -87,7 +86,7 @@ class XGBForecaster(Forecaster):
         learning_rate: float = 0.05,
         max_depth: int = 5,
     ):
-        super().__init__(name="WindowedXGBoost")
+        super().__init__(name="BaseXGBoost")
         self.target_col = target_col
         self.feature_cols = feature_cols or []
         self.n_estimators = n_estimators
@@ -140,9 +139,7 @@ class XGBForecaster(Forecaster):
         self.model = MultiOutputRegressor(base_model)
         self.model.fit(X_train, y_train)
 
-    def predict(
-        self, horizon: int = 24, input_features: Optional[pd.Series] = None
-    ) -> pd.Series:
+    def predict(self, horizon: int = 24, input_features: pd.Series = None) -> pd.Series:
         """
         Predict next 24 hours using the provided features.
 

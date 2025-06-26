@@ -87,6 +87,12 @@ class CalendarFeatureGenerator:
         self.country = country
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Ensure datetime index is timezone-aware
+        if df.index.tz is None:
+            raise ValueError(
+                "DataFrame index must be timezone-aware to handle DST correctly."
+            )
+
         # Base calendar features
         df["hour"] = df.index.hour
         df["dow"] = df.index.dayofweek
@@ -108,8 +114,7 @@ class CalendarFeatureGenerator:
             lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
 
-        # Target (forecast day) calendar features — shift by -24 hours
-        shift_hours = -24  # assuming you're forecasting one full day ahead
+        # Target (forecast day) calendar features — shift back by exactly 24 hours
         calendar_cols = [
             "dow",
             "month",
@@ -123,8 +128,9 @@ class CalendarFeatureGenerator:
             "day_before_holiday",
             "day_after_holiday",
         ]
+
         for col in calendar_cols:
-            df[f"target_{col}"] = df[col].shift(shift_hours)
+            df[f"target_{col}"] = df[col].shift(freq=pd.Timedelta(hours=24))
 
         return df
 
@@ -167,6 +173,14 @@ class FeatureManager:
         # check if we have a datetime index, otherwise make one
         if not isinstance(result.index, pd.DatetimeIndex):
             result.set_index("datetime", inplace=True)
+            # TODO: allow timezone to be specified
+            # for now, we assume the data is in Pacific Time (CAISO)
+            print(result.index.tz)
+            result.index = pd.to_datetime(result.index).tz_localize(
+                "America/Los_Angeles",
+                nonexistent="shift_forward",  # handles spring
+                ambiguous="first",  # handles fall
+            )
 
         for generator in self.feature_generators:
             result = generator.generate(result)
