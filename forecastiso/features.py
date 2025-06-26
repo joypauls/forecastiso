@@ -34,7 +34,9 @@ class LagFeatureGenerator(FeatureGenerator):
 
 
 class RollingFeatureGenerator(FeatureGenerator):
-    """Generate rolling window features"""
+    """
+    Generate rolling window features. Allows custom functions to apply to the windows.
+    """
 
     def __init__(
         self,
@@ -61,7 +63,7 @@ class RollingFeatureGenerator(FeatureGenerator):
 
 
 class WindowFeatureGenerator(FeatureGenerator):
-    """Generate features containing windows of past values"""
+    """Generate features containing windows of past values."""
 
     def __init__(self, column: str = "load", window_sizes: List[int] = [24]):
         self.column = column
@@ -70,7 +72,6 @@ class WindowFeatureGenerator(FeatureGenerator):
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         result = df.copy()
 
-        # Store the windows as separate columns (useful for debugging/analysis)
         for size in self.window_sizes:
             for i in range(size):
                 result[f"{self.column}_window_{size}_{i}"] = df[self.column].shift(
@@ -81,19 +82,16 @@ class WindowFeatureGenerator(FeatureGenerator):
 
 
 class CalendarFeatureGenerator:
-    """Generate calendar and holiday-related features, including forward-shifted target versions."""
+    """
+    Generate calendar and holiday-related features, including forward-shifted target versions.
+    Right now this has no special handling for daylight saving time (DST).
+    """
 
     def __init__(self, country: str = "US"):
         self.country = country
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Ensure datetime index is timezone-aware
-        if df.index.tz is None:
-            raise ValueError(
-                "DataFrame index must be timezone-aware to handle DST correctly."
-            )
-
-        # Base calendar features
+        # base calendar features
         df["hour"] = df.index.hour
         df["dow"] = df.index.dayofweek
         df["month"] = df.index.month
@@ -104,7 +102,7 @@ class CalendarFeatureGenerator:
         df["is_weekend"] = df["dow"] >= 5
         df["day_before_weekend"] = df["dow"].isin([4, 5])
 
-        # Holidays
+        # holiday features
         country_holidays = holidays.country_holidays(self.country)
         df["is_holiday"] = df.index.map(lambda date: date.date() in country_holidays)
         df["day_before_holiday"] = df.index.map(
@@ -114,7 +112,7 @@ class CalendarFeatureGenerator:
             lambda date: (date.date() - pd.Timedelta(days=1)) in country_holidays
         )
 
-        # Target (forecast day) calendar features — shift back by exactly 24 hours
+        shift_hours = -24
         calendar_cols = [
             "dow",
             "month",
@@ -128,9 +126,9 @@ class CalendarFeatureGenerator:
             "day_before_holiday",
             "day_after_holiday",
         ]
-
         for col in calendar_cols:
-            df[f"target_{col}"] = df[col].shift(freq=pd.Timedelta(hours=24))
+            # this fails in the spring daylight saving time change
+            df[f"target_{col}"] = df[col].shift(shift_hours)
 
         return df
 
@@ -171,16 +169,10 @@ class FeatureManager:
         # copy first so feature generators do not modify the original df
         result = df.copy()
         # check if we have a datetime index, otherwise make one
+        # TODO: should this be done in the data loader?
+        # TODO: handle timezones and DST correctly
         if not isinstance(result.index, pd.DatetimeIndex):
             result.set_index("datetime", inplace=True)
-            # TODO: allow timezone to be specified
-            # for now, we assume the data is in Pacific Time (CAISO)
-            print(result.index.tz)
-            result.index = pd.to_datetime(result.index).tz_localize(
-                "America/Los_Angeles",
-                nonexistent="shift_forward",  # handles spring
-                ambiguous="first",  # handles fall
-            )
 
         for generator in self.feature_generators:
             result = generator.generate(result)
