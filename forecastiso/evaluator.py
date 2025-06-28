@@ -7,8 +7,12 @@ from sklearn.metrics import (
     root_mean_squared_error,
 )
 from tqdm import tqdm
+import logging
 
 from .forecasters import Forecaster
+
+
+logger = logging.getLogger(__name__)
 
 
 def mean_error(y_true, y_pred):
@@ -46,6 +50,10 @@ class Evaluator:
 
         if retrain_frequency <= 0:
             raise ValueError("retrain_frequency must be a positive integer")
+        if train_days <= 0:
+            raise ValueError("train_days must be a positive integer")
+        if horizon <= 0:
+            raise ValueError("horizon must be a positive integer")
 
         self.retrain_frequency = retrain_frequency
         self.train_days = train_days
@@ -93,9 +101,9 @@ class Evaluator:
         if "target_dow" in latest_row:
             if latest_row["target_dow"] != predict_date.dayofweek:
                 if self.verbose:
-                    print(
+                    logger.warning(
                         f"""
-                        Warning: target_dow {latest_row['target_dow']} does not match predict dow {predict_date.dayofweek}
+                        target_dow {latest_row['target_dow']} does not match predict dow {predict_date.dayofweek}
                         """
                     )
 
@@ -109,7 +117,7 @@ class Evaluator:
                 results[name] = metric_func(y_true, y_pred)
             except Exception as e:
                 if self.verbose:
-                    print(f"Warning: Could not calculate {name}: {e}")
+                    logger.warning(f"Could not calculate {name}: {e}")
                 results[name] = np.nan
         return results
 
@@ -148,13 +156,17 @@ class Evaluator:
             test_days + self.retrain_frequency - 1
         ) // self.retrain_frequency
 
+        if self.verbose:
+            print(
+                f"Begin evaluation. {total_trainings} models for {test_days} predictions."
+            )
+
         progress_bar = tqdm(
             total=total_trainings,
-            desc="Training models",
+            desc="Training",
             disable=not self.verbose,
             unit="model",
         )
-
         for i in range(test_days):
             cur_predict_date = first_date + pd.Timedelta(days=i)
             cur_day_before_date = first_date + pd.Timedelta(days=i - 1)
@@ -216,9 +228,7 @@ class Evaluator:
         progress_bar.close()
 
         if self.verbose:
-            print(
-                f"Evaluation complete. Trained {total_trainings} models, processed {len(self.predictions)} days."
-            )
+            print(f"Evaluation complete. Made {len(self.predictions)} predictions.")
 
         return self.get_results()
 
@@ -231,7 +241,7 @@ class Evaluator:
             "daily_metrics": self.metric_values.copy(),
             "summary_metrics": {},
         }
-
+        # build summary metrics
         for name, values in self.metric_values.items():
             if values:
                 clean_values = [v for v in values if not np.isnan(v)]
