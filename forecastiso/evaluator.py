@@ -234,6 +234,7 @@ class Evaluator:
     def get_results(self) -> Dict[str, Any]:
         """Get structured evaluation results"""
         results = {
+            "model": self.model.name if self.model else "Unknown",
             "predictions": self.predictions,
             "true_values": self.true_values,
             "prediction_dates": self.prediction_dates,

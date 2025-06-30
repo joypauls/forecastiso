@@ -17,6 +17,7 @@ holidays = "^0.75"
 xgboost = "^3.0.2"
 seaborn = "^0.13.2"
 tqdm = "^4.67.1"
+statsmodels = "^0.14.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"

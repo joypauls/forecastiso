@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
-
 from sklearn.multioutput import MultiOutputRegressor
 from typing import Optional
 from abc import ABC, abstractmethod
 from xgboost import XGBRegressor
+from statsmodels.tsa.arima.model import ARIMA
+import warnings
 
 
 class Forecaster(ABC):
@@ -28,11 +29,11 @@ class Forecaster(ABC):
         pass
 
 
-class NaiveYesterdayForecaster(Forecaster):
+class YesterdayForecaster(Forecaster):
     """Forecaster that uses yesterday's values as predictions"""
 
     def __init__(self):
-        super().__init__(name="NaiveYesterday")
+        super().__init__(name="YesterdayBaseline")
 
     def fit(self, history: pd.DataFrame):
         self.history = history
@@ -42,11 +43,11 @@ class NaiveYesterdayForecaster(Forecaster):
         return self.history.iloc[-24:]["load"].reset_index(drop=True)
 
 
-class NaiveLastWeekForecaster(Forecaster):
+class LastWeekForecaster(Forecaster):
     """Forecaster that uses last week's values as predictions"""
 
     def __init__(self):
-        super().__init__(name="NaiveLastWeek")
+        super().__init__(name="LastWeekBaseline")
 
     def fit(self, history: pd.DataFrame):
         self.history = history
@@ -76,6 +77,58 @@ class RollingMeanForecaster(Forecaster):
             forecasts.append(hourly_vals.mean())
 
         return pd.Series(forecasts[:horizon])
+
+
+class ARIMAForecaster(Forecaster):
+    """
+    ARIMA forecaster for electrical load data with configurable parameters.
+    Uses SARIMA(p,d,q)(P,D,Q,s) for seasonal patterns.
+    (p,d,q) corresponds to 'order' and (P,D,Q,s) to 'seasonal_order'.
+    """
+
+    def __init__(
+        self,
+        target_col: str = "load",
+        order: tuple = (2, 1, 2),
+        seasonal_order: tuple = (1, 1, 1, 24),
+        min_history_hours: int = 24 * 7,
+    ):
+        super().__init__(name="ARIMABaseline")
+        self.target_col = target_col
+        self.order = order
+        self.seasonal_order = seasonal_order
+        self.min_history_hours = min_history_hours
+        self.model = None
+
+    def fit(self, history: pd.DataFrame):
+        """Fit ARIMA model to historical load data"""
+        self.history = history.copy()
+
+        if self.target_col not in history.columns:
+            raise ValueError(f"Target column '{self.target_col}' not found in data")
+
+        if len(history) < self.min_history_hours:
+            raise ValueError(f"Need at least {self.min_history_hours} hours of data")
+
+        target_series = history[self.target_col].dropna()
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+
+            arima_model = ARIMA(
+                target_series, order=self.order, seasonal_order=self.seasonal_order
+            )
+            self.model = arima_model.fit(method_kwargs={"warn_convergence": False})
+
+    def predict(self, horizon: int = 24) -> pd.Series:
+        """Predict next 'horizon' hours using fitted ARIMA model"""
+        if self.model is None:
+            raise ValueError("Model not fitted. Call fit() first.")
+
+        forecast = self.model.forecast(steps=horizon)
+        forecast = np.maximum(forecast, 0)
+
+        return pd.Series(forecast, name=self.target_col)
 
 
 class XGBForecaster(Forecaster):
@@ -167,6 +220,7 @@ class XGBForecaster(Forecaster):
         features = input_features[self.feature_cols].values
 
         X_input = features.reshape(1, -1)
-        prediction = self.model.predict(X_input)[0]
+        forecast = self.model.predict(X_input)[0]
+        forecast = np.maximum(forecast, 0)
 
-        return pd.Series(prediction[:horizon])
+        return pd.Series(forecast[:horizon])
