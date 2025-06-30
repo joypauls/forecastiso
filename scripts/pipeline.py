@@ -15,7 +15,7 @@ from forecastiso.features import (
     CalendarFeatureGenerator,
     WindowFeatureGenerator,
 )
-from forecastiso.forecasters import XGBForecaster
+from forecastiso.forecasters import XGBForecaster, ARIMAForecaster
 from forecastiso.evaluator import Evaluator
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ RUN_NAME = "caiso_2024"
 DATA_DIR = "./data/caiso_hourly/"
 OUTPUT_DIR = "./output/"
 TARGET_COL = "load"
-FIRST_TEST_DATE = "2024-01-01"
+FIRST_TEST_DATE = "2024-01-02"
 LAST_TEST_DATE = "2024-01-31"
 TEST_DAYS = (pd.to_datetime(LAST_TEST_DATE) - pd.to_datetime(FIRST_TEST_DATE)).days
 TRAIN_DAYS = 730
@@ -101,7 +101,6 @@ if __name__ == "__main__":
     print(f"  Min: {features_df.index.min()}")
     print(f"  Max: {features_df.index.max()}")
 
-    logger.info("Evaluating XGBForecaster")
     evaluator = Evaluator(
         retrain_frequency=RETRAIN_FREQUENCY,
         train_days=TRAIN_DAYS,
@@ -109,16 +108,35 @@ if __name__ == "__main__":
         verbose=True,
         skip_dst=True,
     )
-    xgb_results = evaluator.evaluate(
-        model_class=XGBForecaster,
-        model_kwargs={"max_depth": 6},
+
+    logger.info("Evaluating ARIMAForecaster")
+    arima_results = evaluator.evaluate(
+        model_class=ARIMAForecaster,
+        model_kwargs={},
         features_df=features_df,
         target_col=TARGET_COL,
-        feature_cols=_get_feature_columns(),
         first_test_date=FIRST_TEST_DATE,
         last_test_date=LAST_TEST_DATE,
     )
-    # evaluator.print_summary()
+    logger.info(f"MAPE: {arima_results["summary_metrics"]["mape"]["mean"]}")
+    _dict_to_pkl(
+        arima_results,
+        f"{OUTPUT_DIR}/{RUN_NAME}/results_arima.pkl",
+    )
+
+    logger.info("Evaluating XGBForecaster")
+    evaluator.reset_results()
+    xgb_results = evaluator.evaluate(
+        model_class=XGBForecaster,
+        model_kwargs={
+            "feature_cols": _get_feature_columns(),
+            "max_depth": 6,
+        },
+        features_df=features_df,
+        target_col=TARGET_COL,
+        first_test_date=FIRST_TEST_DATE,
+        last_test_date=LAST_TEST_DATE,
+    )
     logger.info(f"MAPE: {xgb_results["summary_metrics"]["mape"]["mean"]}")
     _dict_to_pkl(
         xgb_results,

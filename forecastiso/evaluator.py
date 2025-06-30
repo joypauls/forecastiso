@@ -126,7 +126,6 @@ class Evaluator:
         model_kwargs: Dict[str, Any],
         features_df: pd.DataFrame,
         target_col: str,
-        feature_cols: List[str],
         first_test_date: str,
         last_test_date: str,
     ) -> Dict[str, Any]:
@@ -138,7 +137,6 @@ class Evaluator:
             model_kwargs: Kwargs to pass to model constructor
             features_df: DataFrame with features and target, indexed by datetime
             target_col: Name of target column
-            feature_cols: List of feature column names
             first_test_date: Start date for testing period
             last_test_date: End date for testing period
 
@@ -162,7 +160,7 @@ class Evaluator:
 
         progress_bar = tqdm(
             total=total_trainings,
-            desc="Training",
+            desc="Evaluating",
             disable=not self.verbose,
             unit="model",
         )
@@ -187,9 +185,9 @@ class Evaluator:
                     }
                 )
 
-                self.model = model_class(
-                    target_col=target_col, feature_cols=feature_cols, **model_kwargs
-                )
+                if "target_col" in model_kwargs:
+                    del model_kwargs["target_col"]
+                self.model = model_class(target_col=target_col, **model_kwargs)
                 self.model.fit(train_df)
                 progress_bar.update(1)
 
@@ -233,6 +231,9 @@ class Evaluator:
 
     def get_results(self) -> Dict[str, Any]:
         """Get structured evaluation results"""
+        if not self.predictions:
+            logger.warning("No predictions made. Returning empty results.")
+            return {}
         results = {
             "model": self.model.name if self.model else "Unknown",
             "predictions": self.predictions,

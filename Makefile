@@ -9,6 +9,6 @@ test:
 # below are optional development utilities
 
 pipeline:
-	poetry run python scripts/pipeline.py
+	PYTHONWARNINGS=ignore poetry run python scripts/pipeline.py
 
 

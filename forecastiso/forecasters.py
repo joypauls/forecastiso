@@ -21,9 +21,11 @@ class Forecaster(ABC):
         pass
 
     @abstractmethod
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         """
-        Predict the next 'horizon' values (default: 24 hours)
+        Predict the next 'horizon' values (default: 24 hours) with optional input features.
         Returns a pandas Series with the predictions
         """
         pass
@@ -38,7 +40,9 @@ class YesterdayForecaster(Forecaster):
     def fit(self, history: pd.DataFrame):
         self.history = history
 
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         # TODO: don't hardcode column name
         return self.history.iloc[-24:]["load"].reset_index(drop=True)
 
@@ -52,7 +56,9 @@ class LastWeekForecaster(Forecaster):
     def fit(self, history: pd.DataFrame):
         self.history = history
 
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         # TODO: don't hardcode column name
         return self.history.iloc[-24 * 7 : -24 * 6]["load"].reset_index(drop=True)
 
@@ -67,7 +73,9 @@ class RollingMeanForecaster(Forecaster):
     def fit(self, history: pd.DataFrame):
         self.history = history
 
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         df = self.history.copy()
         forecasts = []
 
@@ -89,8 +97,8 @@ class ARIMAForecaster(Forecaster):
     def __init__(
         self,
         target_col: str = "load",
-        order: tuple = (2, 1, 2),
-        seasonal_order: tuple = (1, 1, 1, 24),
+        order: tuple = (1, 1, 1),
+        seasonal_order: tuple = (0, 1, 1, 24),
         min_history_hours: int = 24 * 7,
     ):
         super().__init__(name="ARIMABaseline")
@@ -110,17 +118,22 @@ class ARIMAForecaster(Forecaster):
         if len(history) < self.min_history_hours:
             raise ValueError(f"Need at least {self.min_history_hours} hours of data")
 
-        target_series = history[self.target_col].dropna()
+        target_values = history[self.target_col].dropna().values
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-
             arima_model = ARIMA(
-                target_series, order=self.order, seasonal_order=self.seasonal_order
+                target_values,
+                order=self.order,
+                seasonal_order=self.seasonal_order,
+                enforce_stationarity=False,
+                enforce_invertibility=False,
             )
             self.model = arima_model.fit(method_kwargs={"warn_convergence": False})
 
-    def predict(self, horizon: int = 24) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         """Predict next 'horizon' hours using fitted ARIMA model"""
         if self.model is None:
             raise ValueError("Model not fitted. Call fit() first.")
@@ -195,7 +208,9 @@ class XGBForecaster(Forecaster):
         self.model = MultiOutputRegressor(base_model)
         self.model.fit(X_train, y_train)
 
-    def predict(self, horizon: int = 24, input_features: pd.Series = None) -> pd.Series:
+    def predict(
+        self, horizon: int = 24, input_features: Optional[pd.Series] = None
+    ) -> pd.Series:
         """
         Predict next 24 hours using the provided features.
 
@@ -210,6 +225,8 @@ class XGBForecaster(Forecaster):
             raise ValueError("Model not fitted. Call fit() first.")
         if horizon > self.train_interval:
             raise ValueError(f"Horizon must be {self.train_interval} or less.")
+        if input_features is None:
+            raise ValueError("Input features must be provided for prediction.")
 
         missing_cols = [
             col for col in self.feature_cols if col not in input_features.index
