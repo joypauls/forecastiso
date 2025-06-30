@@ -2,16 +2,21 @@
 
 Time series forecasting tools applied to ISO electricity demand data
 
-## Development
+## User Guide
 
-| Command        | Purpose              |
-| -------------- | -------------------- |
-| `make install` | Install dependencies |
-| `make test`    | Run unit tests       |
+Here are the essential commands to get started building and running the project.
+
+| Command         | Purpose                |
+| --------------- | ---------------------- |
+| `make install`  | Install dependencies   |
+| `make test`     | Run unit tests         |
+| `make pipeline` | Validate full pipeline |
+
+Note that `make pipeline` may be long running to modify the config as needed.
 
 ### Apple Silicon
 
-Using xgboost can cause problems on Apple silicon.
+To get xgboost to install properly, you may need to install libomp - there's more information in the [docs](https://xgboost.readthedocs.io/en/latest/install.html).
 
 ## Modeling Notes
 

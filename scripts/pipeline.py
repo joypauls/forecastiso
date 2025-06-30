@@ -1,5 +1,11 @@
+"""
+Minimal script used to validate full forecasting pipeline and for one-off runs.
+"""
+
 import logging
 import pandas as pd
+import os
+import pickle
 
 from forecastiso.data_loader import ISODataLoader
 from forecastiso.features import (
@@ -19,7 +25,9 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-CAISO_DIR = "./data/caiso_hourly/"
+# RUN_NAME = "pipeline_validation"
+RUN_NAME = "caiso_2024"
+DATA_DIR = "./data/caiso_hourly/"
 OUTPUT_DIR = "./output/"
 TARGET_COL = "load"
 FIRST_TEST_DATE = "2024-01-01"
@@ -28,6 +36,9 @@ TEST_DAYS = (pd.to_datetime(LAST_TEST_DATE) - pd.to_datetime(FIRST_TEST_DATE)).d
 TRAIN_DAYS = 730
 RETRAIN_FREQUENCY = 7
 HORIZON = 24
+
+if not os.path.exists(f"{OUTPUT_DIR}/{RUN_NAME}"):
+    os.makedirs(f"{OUTPUT_DIR}/{RUN_NAME}")
 
 
 def _get_feature_columns() -> list[str]:
@@ -61,12 +72,17 @@ def _get_feature_columns() -> list[str]:
     ] + windowed_feature_cols
 
 
+def _dict_to_pkl(d: dict, filename: str):
+    with open(filename, "wb") as f:
+        pickle.dump(d, f)
+
+
 if __name__ == "__main__":
-    logger.info(f"Loading datasets from {CAISO_DIR}")
-    loader = ISODataLoader(CAISO_DIR)
+    logger.info(f"Loading datasets from {DATA_DIR}")
+    loader = ISODataLoader(DATA_DIR)
     df = loader.load_and_preprocess()
     df = df[df["area"] == "caiso"]
-    df.to_pickle(f"{OUTPUT_DIR}/pipeline_validation_raw.pkl")
+    df.to_pickle(f"{OUTPUT_DIR}/{RUN_NAME}/raw.pkl")
 
     print("Loaded data time period:")
     print(f"  Min: {df["datetime"].min()}")
@@ -79,7 +95,7 @@ if __name__ == "__main__":
     fm.add_generator(CalendarFeatureGenerator())
     fm.add_generator(WindowFeatureGenerator(column=TARGET_COL, window_sizes=[24]))
     features_df = fm.generate_features(df)
-    features_df.to_pickle(f"{OUTPUT_DIR}/pipeline_validation_features.pkl")
+    features_df.to_pickle(f"{OUTPUT_DIR}/{RUN_NAME}/features.pkl")
 
     print("Generated features time period:")
     print(f"  Min: {features_df.index.min()}")
@@ -104,4 +120,7 @@ if __name__ == "__main__":
     )
     # evaluator.print_summary()
     logger.info(f"MAPE: {xgb_results["summary_metrics"]["mape"]["mean"]}")
-    xgb_results.to_pickle(f"{OUTPUT_DIR}/pipeline_validation_results_xgb.pkl")
+    _dict_to_pkl(
+        xgb_results,
+        f"{OUTPUT_DIR}/{RUN_NAME}/results_xgb.pkl",
+    )

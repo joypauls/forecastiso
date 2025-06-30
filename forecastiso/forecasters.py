@@ -31,6 +31,9 @@ class Forecaster(ABC):
 class NaiveYesterdayForecaster(Forecaster):
     """Forecaster that uses yesterday's values as predictions"""
 
+    def __init__(self):
+        super().__init__(name="NaiveYesterday")
+
     def fit(self, history: pd.DataFrame):
         self.history = history
 
@@ -41,6 +44,9 @@ class NaiveYesterdayForecaster(Forecaster):
 
 class NaiveLastWeekForecaster(Forecaster):
     """Forecaster that uses last week's values as predictions"""
+
+    def __init__(self):
+        super().__init__(name="NaiveLastWeek")
 
     def fit(self, history: pd.DataFrame):
         self.history = history
@@ -54,7 +60,7 @@ class RollingMeanForecaster(Forecaster):
     """Forecaster that uses the rolling mean of past days at the same hour"""
 
     def __init__(self, window_days=4):
-        super().__init__(name=f"RollingMean_{window_days}d")
+        super().__init__(name=f"RollingMean{window_days}dBaseline")
         self.window_days = window_days
 
     def fit(self, history: pd.DataFrame):
@@ -86,7 +92,7 @@ class XGBForecaster(Forecaster):
         learning_rate: float = 0.05,
         max_depth: int = 5,
     ):
-        super().__init__(name="BaseXGBoost")
+        super().__init__(name="XGBoostBaseline")
         self.target_col = target_col
         self.feature_cols = feature_cols or []
         self.n_estimators = n_estimators
@@ -98,7 +104,6 @@ class XGBForecaster(Forecaster):
     def fit(self, history: pd.DataFrame):
         self.history = history.copy().reset_index(drop=True)
 
-        # Validate feature columns
         missing_cols = [
             col for col in self.feature_cols if col not in self.history.columns
         ]
@@ -111,10 +116,8 @@ class XGBForecaster(Forecaster):
             len(self.history) - self.train_interval,
             self.train_interval,
         ):
-            # Get feature values at position i-1 (right before we want to predict)
             features = self.history[self.feature_cols].iloc[i - 1].values
 
-            # Get future values to predict
             future_values = (
                 self.history[self.target_col].iloc[i : i + self.train_interval].values
             )
@@ -155,17 +158,14 @@ class XGBForecaster(Forecaster):
         if horizon > self.train_interval:
             raise ValueError(f"Horizon must be {self.train_interval} or less.")
 
-        # Verify all required features are present
         missing_cols = [
             col for col in self.feature_cols if col not in input_features.index
         ]
         if missing_cols:
             raise ValueError(f"Feature columns not found in input: {missing_cols}")
 
-        # Extract feature values
         features = input_features[self.feature_cols].values
 
-        # Reshape for prediction
         X_input = features.reshape(1, -1)
         prediction = self.model.predict(X_input)[0]
 

@@ -1,4 +1,4 @@
-.PHONY: install test validate
+.PHONY: install test pipeline
 
 install:
 	poetry install --with dev
@@ -8,7 +8,7 @@ test:
 
 # below are optional development utilities
 
-validate:
-	poetry run python scripts/pipeline_validation.py
+pipeline:
+	poetry run python scripts/pipeline.py
 
 

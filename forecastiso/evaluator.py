@@ -23,7 +23,6 @@ def mean_error(y_true, y_pred):
 class Evaluator:
     """
     Evaluator for electricity load forecasting models using time series cross-validation.
-
     Supports periodic model retraining and customizable metrics.
     """
 
