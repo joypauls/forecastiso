@@ -46,7 +46,7 @@ if not os.path.exists(f"{OUTPUT_DIR}/{RUN_NAME}"):
     os.makedirs(f"{OUTPUT_DIR}/{RUN_NAME}")
 
 
-def _get_feature_columns() -> list[str]:
+def _get_xgb_feature_columns() -> list[str]:
     windowed_feature_cols = [f"load_window_{24}_{i}" for i in range(0, 24)]
     return [
         "load_lag_24",
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         (ARIMAForecaster, {}, "arima", daily_evaluator),
         (
             XGBForecaster,
-            {"feature_cols": _get_feature_columns()},
+            {"feature_cols": _get_xgb_feature_columns()},
             "xgb",
             weekly_evaluator,
         ),
