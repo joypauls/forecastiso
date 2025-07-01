@@ -103,7 +103,7 @@ class ARIMAForecaster(Forecaster):
         target_col: str = "load",
         order: tuple = (1, 1, 1),
         seasonal_order: tuple = (0, 1, 1, 24),
-        num_samples: int = 24 * 365,
+        num_samples: int = 24 * 30,  # 30 days
     ):
         super().__init__(name="ARIMABaseline", target_col=target_col)
         self.order = order

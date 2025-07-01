@@ -203,7 +203,9 @@ class Evaluator:
             )
             day_before_df = features_df[day_before_start:day_before_end]
 
-            if self._is_dst_day(cur_predict_date, day_before_df, predict_df):
+            if self.verbose & self._is_dst_day(
+                cur_predict_date, day_before_df, predict_df
+            ):
                 progress_bar.write(f"Skipping {cur_predict_date} due to DST")
                 continue
 

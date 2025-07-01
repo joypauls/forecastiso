@@ -36,11 +36,10 @@ RUN_NAME = "caiso_2024"
 DATA_DIR = "./data/caiso_hourly/"
 OUTPUT_DIR = "./output/"
 TARGET_COL = "load"
-FIRST_TEST_DATE = "2024-01-02"
-LAST_TEST_DATE = "2024-01-31"
+FIRST_TEST_DATE = "2024-01-01"
+LAST_TEST_DATE = "2024-12-31"
 TEST_DAYS = (pd.to_datetime(LAST_TEST_DATE) - pd.to_datetime(FIRST_TEST_DATE)).days
 TRAIN_DAYS = 730
-RETRAIN_FREQUENCY = 7
 HORIZON = 24
 
 if not os.path.exists(f"{OUTPUT_DIR}/{RUN_NAME}"):
@@ -134,25 +133,37 @@ if __name__ == "__main__":
     print(f"  Min: {features_df.index.min()}")
     print(f"  Max: {features_df.index.max()}")
 
-    evaluator = Evaluator(
+    daily_evaluator = Evaluator(
         retrain_frequency=1,
         train_days=TRAIN_DAYS,
         horizon=HORIZON,
-        verbose=True,
+        verbose=False,
         skip_dst=True,
     )
-    models_to_evaluate = [
-        # (YesterdayForecaster, {}, "yesterday"),
-        # (LastWeekForecaster, {}, "lastweek"),
-        # (RollingMeanForecaster, {}, "rollingmean"),
-        (ARIMAForecaster, {}, "arima"),
-        # (XGBForecaster, {"feature_cols": _get_feature_columns()}, "xgb"),
+    weekly_evaluator = Evaluator(
+        retrain_frequency=7,
+        train_days=TRAIN_DAYS,
+        horizon=HORIZON,
+        verbose=False,
+        skip_dst=True,
+    )
+    models_config = [
+        (YesterdayForecaster, {}, "yesterday", daily_evaluator),
+        (LastWeekForecaster, {}, "lastweek", daily_evaluator),
+        (RollingMeanForecaster, {}, "rollingmean", daily_evaluator),
+        (ARIMAForecaster, {}, "arima", daily_evaluator),
+        (
+            XGBForecaster,
+            {"feature_cols": _get_feature_columns()},
+            "xgb",
+            weekly_evaluator,
+        ),
     ]
     # do something with results?
     results = {}
-    for model_class, model_kwargs, model_name in models_to_evaluate:
+    for model_class, model_kwargs, model_name, model_evaluator in models_config:
         results[model_name] = _evaluate_and_save_model(
-            evaluator=evaluator,
+            evaluator=model_evaluator,
             model_class=model_class,
             model_kwargs=model_kwargs,
             features_df=features_df,

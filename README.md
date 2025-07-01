@@ -18,6 +18,14 @@ Note that `make pipeline` may be long running to modify the config as needed.
 
 To get xgboost to install properly, you may need to install libomp - there's more information in the [docs](https://xgboost.readthedocs.io/en/latest/install.html).
 
+## Currently Supported ISOs
+
+## Get the Data
+
+| ISO   | Link                                                     |
+| ----- | -------------------------------------------------------- |
+| CAISO | https://www.caiso.com/library/historical-ems-hourly-load |
+
 ## Modeling Notes
 
 ### Baselines
