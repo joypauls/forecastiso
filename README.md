@@ -1,6 +1,12 @@
 # forecastiso
 
-Time series forecasting tools applied to ISO electricity demand data
+![logo](./logo.svg)
+
+Time series forecasting tools applied to ISO electricity load data.
+
+Provides reliable and reproducible baseline results and a framework for evaluating custom models.
+
+## Brief Background
 
 ## User Guide
 
@@ -20,14 +26,8 @@ To get xgboost to install properly, you may need to install libomp - there's mor
 
 ## Currently Supported ISOs
 
-## Get the Data
-
-| ISO   | Link                                                     |
+| ISO   | Link to Data                                             |
 | ----- | -------------------------------------------------------- |
 | CAISO | https://www.caiso.com/library/historical-ems-hourly-load |
 
-## Modeling Notes
-
-### Baselines
-
-I experimented with linear regression and ridge as baselines, but found that collinearity and matrix instability made them unreliable without aggressive feature pruning or regularization. Instead, I focused on naive and rolling statistical baselines, which are both interpretable and robust, and compared those directly to a non-linear gradient boosting model.
+Support for others is in progress.

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1200 300" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-79.992,-366.059)">
+        <g transform="matrix(150,0,0,150,788.863,590.273)">
+        </g>
+        <text x="186.226px" y="590.273px" style="font-family:'Verdana-Italic', 'Verdana', sans-serif;font-style:italic;font-size:150px;fill:rgb(60,60,60);">forecast</text>
+    </g>
+    <g id="iso" transform="matrix(1,0,0,1,307.1,-344.563)">
+        <g transform="matrix(200,0,0,200,779.175,568.777)">
+        </g>
+        <text x="432.975px" y="568.777px" style="font-family:'AvenirNext-BoldItalic', 'Avenir Next', sans-serif;font-weight:700;font-style:italic;font-size:200px;fill:rgb(112,66,252);">ISO</text>
+    </g>
+</svg>
