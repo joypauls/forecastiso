@@ -11,8 +11,9 @@ import warnings
 class Forecaster(ABC):
     """Base abstract class for all forecasters"""
 
-    def __init__(self, name="UnnamedForecaster"):
+    def __init__(self, name="UnnamedForecaster", target_col: str = "load"):
         self.name = name
+        self.target_col = target_col
         self.history = None
 
     @abstractmethod
@@ -34,8 +35,8 @@ class Forecaster(ABC):
 class YesterdayForecaster(Forecaster):
     """Forecaster that uses yesterday's values as predictions"""
 
-    def __init__(self):
-        super().__init__(name="YesterdayBaseline")
+    def __init__(self, target_col: str = "load"):
+        super().__init__(name="YesterdayBaseline", target_col=target_col)
 
     def fit(self, history: pd.DataFrame):
         self.history = history
@@ -43,15 +44,14 @@ class YesterdayForecaster(Forecaster):
     def predict(
         self, horizon: int = 24, input_features: Optional[pd.Series] = None
     ) -> pd.Series:
-        # TODO: don't hardcode column name
-        return self.history.iloc[-24:]["load"].reset_index(drop=True)
+        return self.history.iloc[-24:][self.target_col].reset_index(drop=True)
 
 
 class LastWeekForecaster(Forecaster):
     """Forecaster that uses last week's values as predictions"""
 
-    def __init__(self):
-        super().__init__(name="LastWeekBaseline")
+    def __init__(self, target_col: str = "load"):
+        super().__init__(name="LastWeekBaseline", target_col=target_col)
 
     def fit(self, history: pd.DataFrame):
         self.history = history
@@ -59,15 +59,18 @@ class LastWeekForecaster(Forecaster):
     def predict(
         self, horizon: int = 24, input_features: Optional[pd.Series] = None
     ) -> pd.Series:
-        # TODO: don't hardcode column name
-        return self.history.iloc[-24 * 7 : -24 * 6]["load"].reset_index(drop=True)
+        return self.history.iloc[-24 * 7 : -24 * 6][self.target_col].reset_index(
+            drop=True
+        )
 
 
 class RollingMeanForecaster(Forecaster):
     """Forecaster that uses the rolling mean of past days at the same hour"""
 
-    def __init__(self, window_days=4):
-        super().__init__(name=f"RollingMean{window_days}dBaseline")
+    def __init__(self, window_days=3, target_col: str = "load"):
+        super().__init__(
+            name=f"RollingMean{window_days}dBaseline", target_col=target_col
+        )
         self.window_days = window_days
 
     def fit(self, history: pd.DataFrame):
@@ -80,8 +83,9 @@ class RollingMeanForecaster(Forecaster):
         forecasts = []
 
         for h in range(24):
-            # TODO: don't hardcode column name
-            hourly_vals = df[df.index.hour == h]["load"][-self.window_days * 24 :]
+            hourly_vals = df[df.index.hour == h][self.target_col][
+                -self.window_days * 24 :
+            ]
             forecasts.append(hourly_vals.mean())
 
         return pd.Series(forecasts[:horizon])
@@ -99,13 +103,12 @@ class ARIMAForecaster(Forecaster):
         target_col: str = "load",
         order: tuple = (1, 1, 1),
         seasonal_order: tuple = (0, 1, 1, 24),
-        min_history_hours: int = 24 * 7,
+        num_samples: int = 24 * 365,
     ):
-        super().__init__(name="ARIMABaseline")
-        self.target_col = target_col
+        super().__init__(name="ARIMABaseline", target_col=target_col)
         self.order = order
         self.seasonal_order = seasonal_order
-        self.min_history_hours = min_history_hours
+        self.num_samples = num_samples
         self.model = None
 
     def fit(self, history: pd.DataFrame):
@@ -115,10 +118,11 @@ class ARIMAForecaster(Forecaster):
         if self.target_col not in history.columns:
             raise ValueError(f"Target column '{self.target_col}' not found in data")
 
-        if len(history) < self.min_history_hours:
-            raise ValueError(f"Need at least {self.min_history_hours} hours of data")
+        if len(history) < self.num_samples:
+            raise ValueError(f"Need at least {self.num_samples} hours of data")
 
-        target_values = history[self.target_col].dropna().values
+        # only use last self.num_samples hours
+        target_values = history.tail(self.num_samples)[self.target_col].dropna().values
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
@@ -156,14 +160,15 @@ class XGBForecaster(Forecaster):
         feature_cols: Optional[list[str]] = None,
         n_estimators: int = 200,
         learning_rate: float = 0.05,
-        max_depth: int = 5,
+        max_depth: int = 6,
+        random_state: Optional[int] = 1729,
     ):
-        super().__init__(name="XGBoostBaseline")
-        self.target_col = target_col
+        super().__init__(name="XGBoostBaseline", target_col=target_col)
         self.feature_cols = feature_cols or []
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.max_depth = max_depth
+        self.random_state = random_state
         self.train_interval = 24
         self.model = None
 
@@ -202,7 +207,7 @@ class XGBForecaster(Forecaster):
             verbosity=0,
             subsample=0.8,
             colsample_bytree=0.8,
-            random_state=1729,
+            random_state=self.random_state,
         )
 
         self.model = MultiOutputRegressor(base_model)

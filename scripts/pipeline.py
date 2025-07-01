@@ -15,7 +15,13 @@ from forecastiso.features import (
     CalendarFeatureGenerator,
     WindowFeatureGenerator,
 )
-from forecastiso.forecasters import XGBForecaster, ARIMAForecaster
+from forecastiso.forecasters import (
+    XGBForecaster,
+    ARIMAForecaster,
+    YesterdayForecaster,
+    LastWeekForecaster,
+    RollingMeanForecaster,
+)
 from forecastiso.evaluator import Evaluator
 
 logger = logging.getLogger(__name__)
@@ -77,6 +83,33 @@ def _dict_to_pkl(d: dict, filename: str):
         pickle.dump(d, f)
 
 
+def _evaluate_and_save_model(
+    evaluator: Evaluator,
+    model_class,
+    model_kwargs: dict,
+    features_df: pd.DataFrame,
+    model_name: str,
+):
+    evaluator.reset_results()
+
+    print("---" * 20)
+    logger.info(f"Evaluating {model_class.__name__}")
+    results = evaluator.evaluate(
+        model_class=model_class,
+        model_kwargs=model_kwargs,
+        features_df=features_df,
+        target_col=TARGET_COL,
+        first_test_date=FIRST_TEST_DATE,
+        last_test_date=LAST_TEST_DATE,
+    )
+    logger.info(f"MAPE: {results['summary_metrics']['mape']['mean']}")
+    _dict_to_pkl(
+        results,
+        f"{OUTPUT_DIR}/{RUN_NAME}/results_{model_name}.pkl",
+    )
+    return results
+
+
 if __name__ == "__main__":
     logger.info(f"Loading datasets from {DATA_DIR}")
     loader = ISODataLoader(DATA_DIR)
@@ -85,8 +118,8 @@ if __name__ == "__main__":
     df.to_pickle(f"{OUTPUT_DIR}/{RUN_NAME}/raw.pkl")
 
     print("Loaded data time period:")
-    print(f"  Min: {df["datetime"].min()}")
-    print(f"  Max: {df["datetime"].max()}")
+    print(f"  Min: {df['datetime'].min()}")
+    print(f"  Max: {df['datetime'].max()}")
 
     logger.info("Generating features")
     fm = FeatureManager()
@@ -102,43 +135,26 @@ if __name__ == "__main__":
     print(f"  Max: {features_df.index.max()}")
 
     evaluator = Evaluator(
-        retrain_frequency=RETRAIN_FREQUENCY,
+        retrain_frequency=1,
         train_days=TRAIN_DAYS,
         horizon=HORIZON,
         verbose=True,
         skip_dst=True,
     )
-
-    logger.info("Evaluating ARIMAForecaster")
-    arima_results = evaluator.evaluate(
-        model_class=ARIMAForecaster,
-        model_kwargs={},
-        features_df=features_df,
-        target_col=TARGET_COL,
-        first_test_date=FIRST_TEST_DATE,
-        last_test_date=LAST_TEST_DATE,
-    )
-    logger.info(f"MAPE: {arima_results["summary_metrics"]["mape"]["mean"]}")
-    _dict_to_pkl(
-        arima_results,
-        f"{OUTPUT_DIR}/{RUN_NAME}/results_arima.pkl",
-    )
-
-    logger.info("Evaluating XGBForecaster")
-    evaluator.reset_results()
-    xgb_results = evaluator.evaluate(
-        model_class=XGBForecaster,
-        model_kwargs={
-            "feature_cols": _get_feature_columns(),
-            "max_depth": 6,
-        },
-        features_df=features_df,
-        target_col=TARGET_COL,
-        first_test_date=FIRST_TEST_DATE,
-        last_test_date=LAST_TEST_DATE,
-    )
-    logger.info(f"MAPE: {xgb_results["summary_metrics"]["mape"]["mean"]}")
-    _dict_to_pkl(
-        xgb_results,
-        f"{OUTPUT_DIR}/{RUN_NAME}/results_xgb.pkl",
-    )
+    models_to_evaluate = [
+        # (YesterdayForecaster, {}, "yesterday"),
+        # (LastWeekForecaster, {}, "lastweek"),
+        # (RollingMeanForecaster, {}, "rollingmean"),
+        (ARIMAForecaster, {}, "arima"),
+        # (XGBForecaster, {"feature_cols": _get_feature_columns()}, "xgb"),
+    ]
+    # do something with results?
+    results = {}
+    for model_class, model_kwargs, model_name in models_to_evaluate:
+        results[model_name] = _evaluate_and_save_model(
+            evaluator=evaluator,
+            model_class=model_class,
+            model_kwargs=model_kwargs,
+            features_df=features_df,
+            model_name=model_name,
+        )
