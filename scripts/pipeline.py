@@ -115,6 +115,7 @@ if __name__ == "__main__":
     df = loader.load_and_preprocess()
     df = df[df["area"] == "caiso"]
     df.to_pickle(f"{OUTPUT_DIR}/{RUN_NAME}/raw.pkl")
+    df.to_csv(f"{OUTPUT_DIR}/{RUN_NAME}/raw.csv", index=False)
 
     print("Loaded data time period:")
     print(f"  Min: {df['datetime'].min()}")
