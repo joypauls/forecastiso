@@ -1,8 +1,10 @@
 # forecastiso
 
+**⚠️ This is experimental and a work in progress.**
+
 ![logo](./docs/images/logo.svg)
 
-Experimental but well-tested, forecastISO is a times series forecasting project focused on day-ahead system-wide (i.e. at the level of ISOs and RTOs) electricity load forecasting. This is a fundamental task for markets and system operators, as well as an interesting domain for time series analysis due to the complexity and multiscale seasonality. The goal is to make it easy for practitioners and students to develop new methods with reproducible workflows and reliable baselines.
+Experimental but under active develpment, forecastISO is a times series forecasting framework focused on day-ahead system-wide (i.e. at the level of ISOs and RTOs) electricity load forecasting. This is a fundamental task for markets and system operators, as well as an interesting domain for time series analysis due to the complexity and multiscale seasonality. The goal is to make it easy for practitioners and students to develop new methods with reproducible workflows and reliable baselines.
 
 Features:
 
@@ -13,7 +15,7 @@ Features:
 
 ## For Students and Educators 📚
 
-Another, but not secondary, goal of this project is to provide a set of tools for those new to time series forecasting or machine learning in general. With many built-in utilities and a low barrier to entry, this package is a unique educational offering. It is also the author's opinion that getting more people thinking about energy consumption and the systems that serve us all will benefit everyone.
+Another goal of this project is to provide a set of tools for those new to time series forecasting or machine learning in general. With many built-in utilities and a low barrier to entry, this package is a unique educational offering, with an opportunity to get more people thinking about energy consumption and the systems that serve us all.
 
 ## Brief Background
 
